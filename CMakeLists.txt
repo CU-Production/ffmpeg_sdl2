@@ -13,3 +13,12 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different  ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/SDL2-2.28.5/lib/x64 "${CMAKE_CURRENT_BINARY_DIR}/"
         VERBATIM
 )
+
+add_executable(tutorial01 tutorial01/tutorial01.cpp)
+target_link_libraries(tutorial01 FFmpeg SDL2285 stb)
+add_custom_command(
+        TARGET tutorial01 PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different  ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/ffmpeg-master-latest-win64-gpl-shared/bin "${CMAKE_CURRENT_BINARY_DIR}/"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different  ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/SDL2-2.28.5/lib/x64 "${CMAKE_CURRENT_BINARY_DIR}/"
+        VERBATIM
+)
