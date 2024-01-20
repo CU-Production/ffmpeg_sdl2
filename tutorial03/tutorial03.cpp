@@ -12,22 +12,12 @@ extern "C"
 void printHelpMenu()
 {
     printf("Invalid arguments.\n\n");
-    printf("Usage: ./tutorial03 <filename> <max-frames-to-decode>\n\n");
-    printf("e.g: ./tutorial03 /home/rambodrahmani/Videos/Labrinth-Jealous.mp4 200\n");
+    printf("Usage: ./tutorial02 <filename> <max-frames-to-decode>\n\n");
+    printf("e.g: ./tutorial02 /home/rambodrahmani/Videos/Labrinth-Jealous.mp4 200\n");
 }
 
 int main(int argc, char * argv[])
 {
-    AVFormatContext *pFormatCtx = nullptr;
-    int             i, videoStream, audioStream;
-    AVCodecContext  *pCodecCtx = nullptr;
-    const AVCodec   *pCodec = nullptr;
-    AVFrame         *pFrame = nullptr;
-    AVPacket        packet;
-    int             frameFinished;
-    struct SwsContext *sws_ctx = nullptr;
-
-
     if ( !(argc > 2) ) {
         printHelpMenu();
         return -1;
@@ -37,6 +27,8 @@ int main(int argc, char * argv[])
         printf("Could not initialize SDL - %s\n.", SDL_GetError());
         return -1;
     }
+
+    AVFormatContext* pFormatCtx = nullptr;
 
     if (avformat_open_input(&pFormatCtx, argv[1], nullptr, nullptr) < 0) {
         printf("Could not open file %s\n", argv[1]);
@@ -50,7 +42,11 @@ int main(int argc, char * argv[])
 
     av_dump_format(pFormatCtx, 0, argv[1], 0);
 
-    videoStream = -1;
+    int i;
+
+    AVCodecContext* pCodecCtx = nullptr;
+
+    int videoStream = -1;
     for (i = 0; i < pFormatCtx->nb_streams; i++) {
         if (pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             videoStream = i;
@@ -63,6 +59,7 @@ int main(int argc, char * argv[])
         return -1;
     }
 
+    const AVCodec* pCodec = nullptr;
     pCodec = avcodec_find_decoder(pFormatCtx->streams[videoStream]->codecpar->codec_id);
     if (pCodec == nullptr) {
         printf("Unsupported codec! codec not found\n");
@@ -80,6 +77,7 @@ int main(int argc, char * argv[])
         return -1;
     }
 
+    AVFrame* pFrame = nullptr;
     pFrame = av_frame_alloc();
     if (pFrame == nullptr) {
         printf("Could not allocate frame.\n");
@@ -98,6 +96,8 @@ int main(int argc, char * argv[])
     SDL_Renderer* renderer = SDL_CreateRenderer(screen, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_TARGETTEXTURE);
 
     SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_STREAMING, pCodecCtx->width, pCodecCtx->height);
+
+    SwsContext* sws_ctx = nullptr;
 
     AVPacket* pPacket = av_packet_alloc();
     if (pPacket == nullptr) {
