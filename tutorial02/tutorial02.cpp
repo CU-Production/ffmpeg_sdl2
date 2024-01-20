@@ -6,28 +6,25 @@ extern "C"
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 };
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
+#include <SDL.h>
+#include <SDL_thread.h>
 
 void printHelpMenu()
 {
     printf("Invalid arguments.\n\n");
-    printf("Usage: ./tutorial01 <filename> <max-frames-to-decode>\n\n");
-    printf("e.g: ./tutorial01 /home/rambodrahmani/Videos/Labrinth-Jealous.mp4 200\n");
-}
-
-void saveFrame(AVFrame * avFrame, int width, int height, int frameIndex)
-{
-    char szFilename[32];
-    sprintf(szFilename, "frame%d.png", frameIndex);
-    stbi_write_jpg(szFilename, width, height, 3, avFrame->data[0], 75);
+    printf("Usage: ./tutorial02 <filename> <max-frames-to-decode>\n\n");
+    printf("e.g: ./tutorial02 /home/rambodrahmani/Videos/Labrinth-Jealous.mp4 200\n");
 }
 
 int main(int argc, char * argv[])
 {
     if ( !(argc > 2) ) {
         printHelpMenu();
+        return -1;
+    }
+
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0) {
+        printf("Could not initialize SDL - %s\n.", SDL_GetError());
         return -1;
     }
 
@@ -87,18 +84,18 @@ int main(int argc, char * argv[])
         return -1;
     }
 
-    AVFrame * pFrameRGB = nullptr;
-    pFrameRGB = av_frame_alloc();
-    if (pFrameRGB == nullptr) {
-        printf("Could not allocate frame.\n");
+    SDL_Window* screen = SDL_CreateWindow("SDL Video Player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, pCodecCtx->width/2, pCodecCtx->height/2, SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI);
+    // SDL_Window* screen = SDL_CreateWindow("SDL Video Player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, pCodecCtx->width/2, pCodecCtx->height/2, SDL_WINDOW_VULKAN | SDL_WINDOW_ALLOW_HIGHDPI);
+    if (!screen) {
+        printf("SDL: could not set video mode - exiting.\n");
         return -1;
     }
 
-    uint8_t* buffer = nullptr;
-    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, pCodecCtx->width, pCodecCtx->height, 32);
-    buffer = (uint8_t*)av_malloc(numBytes * sizeof(uint8_t));
+    SDL_GL_SetSwapInterval(1);
 
-    av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24, pCodecCtx->width, pCodecCtx->height, 32);
+    SDL_Renderer* renderer = SDL_CreateRenderer(screen, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_TARGETTEXTURE);
+
+    SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_STREAMING, pCodecCtx->width, pCodecCtx->height);
 
     SwsContext* sws_ctx = nullptr;
 
@@ -114,12 +111,22 @@ int main(int argc, char * argv[])
     pCodecCtx->pix_fmt,
     pCodecCtx->width,
     pCodecCtx->height,
-    AV_PIX_FMT_RGB24,   // sws_scale destination color scheme
+    AV_PIX_FMT_YUV420P,   // sws_scale destination color scheme
     SWS_BILINEAR,
     nullptr,
     nullptr,
     nullptr
         );
+
+    uint8_t * buffer = nullptr;
+    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_YUV420P, pCodecCtx->width, pCodecCtx->height, 32);
+    buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+
+    SDL_Event event;
+
+    AVFrame* pict = av_frame_alloc();
+
+    av_image_fill_arrays(pict->data, pict->linesize, buffer, AV_PIX_FMT_YUV420P, pCodecCtx->width, pCodecCtx->height, 32);
 
     int maxFramesToDecode;
     sscanf (argv[2], "%d", &maxFramesToDecode);
@@ -143,44 +150,73 @@ int main(int argc, char * argv[])
                     return -1;
                 }
 
-                sws_scale(sws_ctx, pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pFrameRGB->data, pFrameRGB->linesize);
+                sws_scale(sws_ctx, pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pict->data, pict->linesize);
 
                 if (++i <= maxFramesToDecode) {
-                    saveFrame(pFrameRGB, pCodecCtx->width, pCodecCtx->height, i);
+                    double fps = av_q2d(pFormatCtx->streams[videoStream]->r_frame_rate);
+                    double sleep_time = 1.0/(double)fps;
+                    SDL_Delay((1000 * sleep_time) - 10);
+
+                    SDL_Rect rect;
+                    rect.x = 0;
+                    rect.y = 0;
+                    rect.w = pCodecCtx->width;
+                    rect.h = pCodecCtx->height;
 
                     printf(
-                        "Frame %c (%d) pts %d dts %d key_frame %d "
-            "[coded_picture_number %d, display_picture_number %d,"
-            " %dx%d]\n",
+                        "Frame %c (%d) pts %d dts %d key_frame %d [coded_picture_number %d, display_picture_number %d, %dx%d]\n",
                         av_get_picture_type_char(pFrame->pict_type),
                         pCodecCtx->frame_number,
-                        pFrameRGB->pts,
-                        pFrameRGB->pkt_dts,
-                        pFrameRGB->key_frame,
-                        pFrameRGB->coded_picture_number,
-                        pFrameRGB->display_picture_number,
+                        pFrame->pts,
+                        pFrame->pkt_dts,
+                        pFrame->key_frame,
+                        pFrame->coded_picture_number,
+                        pFrame->display_picture_number,
                         pCodecCtx->width,
                         pCodecCtx->height
                     );
+
+                    SDL_UpdateYUVTexture(texture, &rect, pict->data[0], pict->linesize[0], pict->data[1], pict->linesize[1], pict->data[2], pict->linesize[2]);
+
+                    SDL_RenderClear(renderer);
+                    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+                    SDL_RenderPresent(renderer);
                 } else {
                     break;
                 }
             }
 
             av_packet_unref(pPacket);
+
+            SDL_PollEvent(&event);
+            switch (event.type) {
+                case SDL_QUIT: {
+                    SDL_Quit();
+                    exit(0);
+                }
+                break;
+
+                default: {
+                    // nothing to do
+                }
+                break;
+            }
         }
     }
 
+    av_frame_free(&pict);
+    av_free(pict);
     av_free(buffer);
-    av_frame_free(&pFrameRGB);
-    av_free(pFrameRGB);
 
     av_frame_free(&pFrame);
     av_free(pFrame);
-
     avcodec_close(pCodecCtx);
-
     avformat_close_input(&pFormatCtx);
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(screen);
+    SDL_Quit();
 
     return 0;
 }
