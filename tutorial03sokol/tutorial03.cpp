@@ -1,4 +1,3 @@
-#include <stdio.h>
 extern "C"
 {
 #include <libavcodec/avcodec.h>
@@ -17,6 +16,7 @@ extern "C"
 #include "sokol_glue.h"
 #include "sokol_log.h"
 #include <iostream>
+#include <chrono>
 
 sg_pass_action pass_action{};
 sg_buffer vbuf{};
@@ -71,9 +71,9 @@ void init() {
     as_desc.logger.func = slog_func;
     as_desc.buffer_frames = 1024;
     as_desc.sample_rate = 44110;
-    as_desc.num_channels = 2;
+    // as_desc.num_channels = 2;
     saudio_setup(&as_desc);
-    // assert(saudio_channels() == 1);
+    assert(saudio_channels() == 1);
 
     const float vertices[] = {
             // positions     uv
@@ -158,7 +158,6 @@ void frame() {
                 exit(-1);
             }
 
-
             while (ret >= 0) {
                 ret = avcodec_receive_frame(ffmpeg_state.pCodecCtx, ffmpeg_state.pFrame);
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -172,6 +171,11 @@ void frame() {
                 sws_scale(ffmpeg_state.sws_ctx, ffmpeg_state.pFrame->data, ffmpeg_state.pFrame->linesize, 0, ffmpeg_state.pCodecCtx->height, ffmpeg_state.pFrameRGB->data, ffmpeg_state.pFrameRGB->linesize);
 
                 {
+                    typedef std::chrono::high_resolution_clock clock;
+                    typedef std::chrono::duration<float, std::milli> duration;
+
+                    clock::time_point start = clock::now();
+
                     printf(
                         "Frame %c (%d) pts %d dts %d key_frame %d [coded_picture_number %d, display_picture_number %d, %dx%d]\n",
                         av_get_picture_type_char(ffmpeg_state.pFrame->pict_type),
@@ -195,12 +199,26 @@ void frame() {
                     sg_draw(0, 6, 1);
                     sg_end_pass();
                     sg_commit();
+
+                    clock::time_point end = clock::now();
+                    duration elapsed = end - start;
+                    double diffms = elapsed.count();
+
+                    double fps = av_q2d(ffmpeg_state.pFormatCtx->streams[ffmpeg_state.videoStream]->r_frame_rate);
+                    double sleep_time_ms = 1.0/(double)fps * 1000;
+
+                    if (diffms < sleep_time_ms ) {
+                        uint32_t diff = (uint32_t)((sleep_time_ms - diffms));
+                        printf("diffms: %f, delay time %d ms.\n", diffms, diff);
+                        // std::this_thread::sleep_for(std::chrono::milliseconds(diff));
+                        Sleep(diff);
+                    }
                 }
             }
 
         }
 
-        if (false && ffmpeg_state.pPacket->stream_index == ffmpeg_state.audioStream) {
+        if (ffmpeg_state.pPacket->stream_index == ffmpeg_state.audioStream) {
             int ret = avcodec_send_packet(ffmpeg_state.aCodecCtx, ffmpeg_state.pPacket);
             if (ret < 0) {
                 printf("Error sending packet for decoding.\n");
@@ -217,7 +235,7 @@ void frame() {
                     exit(-1);
                 }
 
-                int dst_samples = ffmpeg_state.aFrame->channels * av_rescale_rnd(
+                int dst_samples = av_rescale_rnd(
                                    swr_get_delay(ffmpeg_state.swr_ctx, ffmpeg_state.aFrame->sample_rate) + ffmpeg_state.aFrame->nb_samples,
                                    44100,
                                    ffmpeg_state.aFrame->sample_rate,
@@ -227,9 +245,9 @@ void frame() {
                                        NULL,
                                        1,
                                        dst_samples,
-                                       AV_SAMPLE_FMT_S16,
+                                       AV_SAMPLE_FMT_FLT,
                                        1);
-                dst_samples = ffmpeg_state.aFrame->channels * swr_convert(
+                dst_samples = swr_convert(
                                           ffmpeg_state.swr_ctx,
                                           &audiobuf,
                                           dst_samples,
@@ -240,7 +258,7 @@ void frame() {
                                              audiobuf,
                                              1,
                                              dst_samples,
-                                             AV_SAMPLE_FMT_S16,
+                                             AV_SAMPLE_FMT_FLT,
                                              1);
                 saudio_push(reinterpret_cast<float*>(ffmpeg_state.audioframe->data[0]), ffmpeg_state.audioframe->linesize[0]);
             }
@@ -358,7 +376,7 @@ int main(int argc, const char* argv[]) {
 
     ffmpeg_state.swr_ctx = swr_alloc_set_opts(
         nullptr,
-        ffmpeg_state.aCodecCtx->channel_layout,
+        AV_CH_LAYOUT_MONO,
         AV_SAMPLE_FMT_FLT,
         44100,
         ffmpeg_state.aCodecCtx->channel_layout,
