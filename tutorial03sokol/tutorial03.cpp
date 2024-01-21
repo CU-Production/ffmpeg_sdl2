@@ -210,8 +210,7 @@ void frame() {
                     if (diffms < sleep_time_ms ) {
                         uint32_t diff = (uint32_t)((sleep_time_ms - diffms));
                         printf("diffms: %f, delay time %d ms.\n", diffms, diff);
-                        // std::this_thread::sleep_for(std::chrono::milliseconds(diff));
-                        Sleep(diff);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(diff));
                     }
                 }
             }
