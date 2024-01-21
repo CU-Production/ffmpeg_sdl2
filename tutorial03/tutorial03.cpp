@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <chrono>
 extern "C"
 {
 #include <libavcodec/avcodec.h>
@@ -196,9 +197,10 @@ int main(int argc, char * argv[])
                 sws_scale(sws_ctx, pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pict->data, pict->linesize);
 
                 if (++frameIndex <= maxFramesToDecode) {
-                    double fps = av_q2d(pFormatCtx->streams[videoStream]->r_frame_rate);
-                    double sleep_time = 1.0/(double)fps;
-                    SDL_Delay((1000 * sleep_time) - 10);
+                    typedef std::chrono::high_resolution_clock clock;
+                    typedef std::chrono::duration<float, std::milli> duration;
+
+                    clock::time_point start = clock::now();
 
                     SDL_Rect rect;
                     rect.x = 0;
@@ -224,6 +226,20 @@ int main(int argc, char * argv[])
                     SDL_RenderClear(renderer);
                     SDL_RenderCopy(renderer, texture, nullptr, nullptr);
                     SDL_RenderPresent(renderer);
+
+                    clock::time_point end = clock::now();
+                    duration elapsed = end - start;
+                    // double diffms = std::difftime(end, start) / 1000.0;
+                    double diffms = elapsed.count();
+
+                    double fps = av_q2d(pFormatCtx->streams[videoStream]->r_frame_rate);
+                    double sleep_time_ms = 1.0/(double)fps * 1000;
+
+                    if (diffms < sleep_time_ms ) {
+                        uint32_t diff = (uint32_t)((sleep_time_ms - diffms));
+                        printf("diffms: %f, delay time %d ms.\n", diffms, diff);
+                        SDL_Delay(diff);
+                    }
                 } else {
                     break;
                 }
