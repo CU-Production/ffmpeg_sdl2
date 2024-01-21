@@ -20,3 +20,7 @@ target_link_libraries(SDL2285 INTERFACE SDL2 SDL2main)
 # stb
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE stb)
+
+# sokol
+add_library(sokol INTERFACE)
+target_include_directories(sokol INTERFACE sokol)
