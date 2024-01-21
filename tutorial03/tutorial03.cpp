@@ -175,6 +175,10 @@ int main(int argc, char * argv[])
     sscanf (argv[2], "%d", &maxFramesToDecode);
 
     int frameIndex = 0;
+
+    typedef std::chrono::high_resolution_clock clock;
+    typedef std::chrono::duration<float, std::milli> duration;
+    clock::time_point start = clock::now();
     while (av_read_frame(pFormatCtx, pPacket) >= 0) {
         if (pPacket->stream_index == videoStream) {
             int ret = avcodec_send_packet(pCodecCtx, pPacket);
@@ -197,11 +201,6 @@ int main(int argc, char * argv[])
                 sws_scale(sws_ctx, pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pict->data, pict->linesize);
 
                 if (++frameIndex <= maxFramesToDecode) {
-                    typedef std::chrono::high_resolution_clock clock;
-                    typedef std::chrono::duration<float, std::milli> duration;
-
-                    clock::time_point start = clock::now();
-
                     SDL_Rect rect;
                     rect.x = 0;
                     rect.y = 0;
@@ -229,7 +228,6 @@ int main(int argc, char * argv[])
 
                     clock::time_point end = clock::now();
                     duration elapsed = end - start;
-                    // double diffms = std::difftime(end, start) / 1000.0;
                     double diffms = elapsed.count();
 
                     double fps = av_q2d(pFormatCtx->streams[videoStream]->r_frame_rate);
@@ -240,6 +238,7 @@ int main(int argc, char * argv[])
                         printf("diffms: %f, delay time %d ms.\n", diffms, diff);
                         SDL_Delay(diff);
                     }
+                    start = clock::now();
                 } else {
                     break;
                 }
